@@ -14,8 +14,18 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, McpError, ErrorCode
+from mcp.types import Tool, TextContent, ErrorData
+from mcp.shared.exceptions import McpError
 from pydantic import BaseModel, Field, field_validator
+
+# JSON-RPC error codes (formerly mcp.types.ErrorCode)
+_INVALID_REQUEST = -32600
+_METHOD_NOT_FOUND = -32601
+_INTERNAL_ERROR = -32603
+
+
+def _mcp_error(code: int, message: str) -> McpError:
+    return McpError(ErrorData(code=code, message=message))
 
 FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 WHISPER_CPP_PATH = os.environ.get("WHISPER_CPP_PATH", "whisper-cli")
@@ -25,8 +35,8 @@ WHISPER_MODEL_PATH = os.environ.get("WHISPER_MODEL_PATH", "")
 def find_bin(name: str, env_val: str) -> str:
     path = shutil.which(env_val)
     if not path:
-        raise McpError(
-            ErrorCode.InvalidRequest,
+        raise _mcp_error(
+            _INVALID_REQUEST,
             f"{name} not found at '{env_val}'. Install it or set the appropriate env var."
         )
     return path
@@ -263,11 +273,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "translate_srt":
             return await _translate_srt(arguments)
         else:
-            raise McpError(ErrorCode.MethodNotFound, f"Unknown tool: {name}")
+            raise _mcp_error(_METHOD_NOT_FOUND, f"Unknown tool: {name}")
     except McpError:
         raise
     except Exception as e:
-        raise McpError(ErrorCode.InternalError, str(e)) from e
+        raise _mcp_error(_INTERNAL_ERROR, str(e)) from e
 
 
 async def _transcribe(args: dict[str, Any]) -> list[TextContent]:
@@ -286,7 +296,7 @@ async def _transcribe(args: dict[str, Any]) -> list[TextContent]:
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise McpError(ErrorCode.InternalError, f"Whisper failed: {result.stderr[:500]}")
+        raise _mcp_error(_INTERNAL_ERROR, f"Whisper failed: {result.stderr[:500]}")
 
     # whisper-cli appends .srt extension
     actual_output = output_path.with_suffix("").with_suffix(".srt")
@@ -326,7 +336,7 @@ async def _burn_subtitles(args: dict[str, Any]) -> list[TextContent]:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise McpError(ErrorCode.InternalError, f"FFmpeg subtitle burn failed: {result.stderr[:500]}")
+        raise _mcp_error(_INTERNAL_ERROR, f"FFmpeg subtitle burn failed: {result.stderr[:500]}")
 
     size = output_path.stat().st_size
     return [TextContent(type="text", text=json.dumps({

@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "MCP server for subtitle transcription and burning using FFmpeg and Whisper.cpp"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "mcp>=1.0.0",
     "pydantic>=2.0.0",
